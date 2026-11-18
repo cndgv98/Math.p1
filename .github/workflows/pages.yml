@@ -1,0 +1,73 @@
+name: Build and deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Locate website project
+        id: project
+        shell: bash
+        run: |
+          if [[ -f tools/build-single.mjs && -f package.json ]]; then
+            echo "directory=." >> "$GITHUB_OUTPUT"
+          elif [[ -f toan-qlcl/tools/build-single.mjs ]]; then
+            echo "directory=toan-qlcl" >> "$GITHUB_OUTPUT"
+          else
+            echo "Website project not found" >&2
+            exit 1
+          fi
+      - name: Check JavaScript syntax
+        working-directory: ${{ steps.project.outputs.directory }}
+        run: |
+          node --check app.js
+          node --check data.js
+          node --check core.js
+          node --check demo.js
+      - name: Test score and statistical rules
+        working-directory: ${{ steps.project.outputs.directory }}
+        run: npm test
+      # The browser build uses Node built-ins only. No npm install needed.
+      - name: Build static website
+        working-directory: ${{ steps.project.outputs.directory }}
+        run: npm run build
+      - name: Verify Pages artifact and repository subpath
+        working-directory: ${{ steps.project.outputs.directory }}
+        run: npm run check:pages
+      - name: Upload static artifact only
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ steps.project.outputs.directory }}/pages-dist
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Deploy verified artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
