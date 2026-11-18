@@ -60,6 +60,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
@@ -67,7 +68,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Configure GitHub Pages
+        id: pages
         uses: actions/configure-pages@v5
+        with:
+          # First-time site creation needs a separate token with Pages write
+          # permission. GITHUB_TOKEN can deploy an already-enabled Pages site.
+          enablement: true
+          token: ${{ secrets.PAGES_SETUP_TOKEN || github.token }}
       - name: Deploy verified artifact
         id: deployment
         uses: actions/deploy-pages@v4
